@@ -3,12 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1.0, user-scalable=no" />
-  <title>Инвест-калькулятор (мини-апп)</title>
+  <title>Инвест-калькулятор</title>
 
   <!-- Tailwind -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
-    tailwind.config = { darkMode:'class', theme:{ extend:{ colors:{ zinc:{750:'#27272a',850:'#202022',900:'#18181b',950:'#09090b'} } } } }
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: { zinc:{750:'#27272a',850:'#202022',900:'#18181b',950:'#09090b'} }
+        }
+      }
+    }
   </script>
 
   <!-- React / Babel / Supabase / Telegram WebApp -->
@@ -22,50 +29,43 @@
     :root { color-scheme: dark; }
     html, body {
       height: 100%;
-      overscroll-behavior-y: contain;   /* меньше шансов свернуть апп */
+      overscroll-behavior-y: contain;
       overscroll-behavior-x: none;
-      touch-action: pan-y;              /* запрет горизонтальных жестов */
+      touch-action: pan-y;
       -webkit-text-size-adjust: 100%;
     }
     body{
       background:#09090b; color:#e4e4e7; -webkit-tap-highlight-color:transparent; margin:0;
     }
-    /* безопасные отступы под вырезы */
-    .safe {
-      padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
-      padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    .safe{
+      padding-top: calc(env(safe-area-inset-top,0px) + 8px);
+      padding-bottom: calc(env(safe-area-inset-bottom,0px) + 16px);
     }
-    /* Глобальный скроллбар */
     ::-webkit-scrollbar{ width:6px; height:6px }
     ::-webkit-scrollbar-track{ background:#18181b }
     ::-webkit-scrollbar-thumb{ background:#4f46e5; border-radius:3px }
 
-    /* Улучшенные range-ползунки (iOS/Android) */
+    /* Улучшенные range-ползунки */
     input[type="range"]{
-      -webkit-appearance:none; appearance:none; width:100%; background:transparent;
-      height:40px;              /* большая кликабельная зона */
-      cursor:pointer;
+      -webkit-appearance:none; appearance:none;
+      width:100%; background:transparent; height:40px; cursor:pointer;
     }
     input[type="range"]::-webkit-slider-runnable-track{ height:10px; background:#3f3f46; border-radius:999px; }
     input[type="range"]::-moz-range-track{ height:10px; background:#3f3f46; border-radius:999px; }
     input[type="range"]::-webkit-slider-thumb{
-      -webkit-appearance:none; appearance:none; width:24px; height:24px; border-radius:50%;
-      background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.5); margin-top:-7px;
+      -webkit-appearance:none; appearance:none;
+      width:24px; height:24px; border-radius:50%; background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.5); margin-top:-7px;
     }
-    input[type="range"]::-moz-range-thumb{
-      width:24px; height:24px; border-radius:50%; background:#fff; border:0; box-shadow:0 1px 6px rgba(0,0,0,.5);
-    }
+    input[type="range"]::-moz-range-thumb{ width:24px; height:24px; border-radius:50%; background:#fff; border:0; box-shadow:0 1px 6px rgba(0,0,0,.5); }
 
-    /* Адаптив заголовков — без расползания */
     .title-clamp { font-size: clamp(20px, 4.5vw, 32px); line-height: 1.15; }
   </style>
 
   <script>
-    // Для мини-аппа Telegram
+    // Мини-апп Telegram
     (function () {
       const tg = window.Telegram?.WebApp;
-      tg?.ready?.();
-      tg?.expand?.();
+      tg?.ready?.(); tg?.expand?.();
       document.addEventListener('touchmove', (e) => {
         const el = e.target.closest('input,textarea,select,[contenteditable=true]');
         if (!el) e.preventDefault();
@@ -73,503 +73,494 @@
     })();
   </script>
 </head>
+
 <body class="bg-zinc-950">
-<div id="root"></div>
+  <div id="root"></div>
 
-<script type="text/babel">
-/**************  НАСТРОЙКИ  ****************/
-const SUPABASE_URL = 'https://omxvlwcjtijbjuhjadgj.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_aNBhpvGpkfEn1HtaPzEE3w_o7TmgioM';
-/*******************************************/
+  <script type="text/babel">
+    /**************  НАСТРОЙКИ  ****************/
+    const SUPABASE_URL = 'https://omxvlwcjtijbjuhjadgj.supabase.co';
+    const SUPABASE_ANON_KEY = 'sb_publishable_aNBhpvGpkfEn1HtaPzEE3w_o7TmgioM';
+    /*******************************************/
 
-const { useState, useEffect, useMemo, useRef } = React;
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-const tg = window.Telegram?.WebApp;
+    const { useState, useEffect, useMemo, useRef } = React;
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const tg = window.Telegram?.WebApp;
 
-try {
-  tg?.ready(); tg?.expand(); tg?.enableClosingConfirmation();
-  tg?.setBackgroundColor?.('#09090b'); tg?.setHeaderColor?.('secondary_bg_color');
-} catch(e) {}
+    try {
+      tg?.ready(); tg?.expand(); tg?.enableClosingConfirmation();
+      tg?.setBackgroundColor?.('#09090b'); tg?.setHeaderColor?.('secondary_bg_color');
+    } catch(e) {}
 
-const cf = new Intl.NumberFormat('ru-RU', { style:'currency', currency:'RUB', maximumFractionDigits:0 });
-const pf = new Intl.NumberFormat('ru-RU', { style:'percent', maximumFractionDigits:1 });
+    // helpers
+    const cf = new Intl.NumberFormat('ru-RU', { style:'currency', currency:'RUB', maximumFractionDigits:0 });
+    const pf = new Intl.NumberFormat('ru-RU', { style:'percent', maximumFractionDigits:1 });
 
-const PERIODS = [
-  { key:'monthly',   label:'Раз в месяц',  perYear:12 },
-  { key:'quarterly', label:'Раз в квартал', perYear:4 },
-  { key:'yearly',    label:'Раз в год',     perYear:1 },
-  { key:'weekly',    label:'Раз в неделю',  perYear:52 },
-  { key:'daily',     label:'Ежедневно',     perYear:365 }
-];
+    const PERIODS = [
+      { key:'monthly',   label:'Раз в месяц',   perYear:12 },
+      { key:'quarterly', label:'Раз в квартал', perYear:4 },
+      { key:'yearly',    label:'Раз в год',     perYear:1 },
+      { key:'weekly',    label:'Раз в неделю',  perYear:52 },
+      { key:'daily',     label:'Ежедневно',     perYear:365 }
+    ];
 
-function gcd(a,b){ return b===0?Math.abs(a):gcd(b,a%b) }
-function lcm(a,b){ return Math.abs(a*b)/gcd(a,b) }
+    function gcd(a,b){ return b===0?Math.abs(a):gcd(b,a%b) }
+    function lcm(a,b){ return Math.abs(a*b)/gcd(a,b) }
 
-// Модель накопления
-function simulateFV({ principal, apr, years, contribution, contribPerYear, compoundPerYear, reinvest }) {
-  const stepsPerYear = lcm(Math.max(1,compoundPerYear), Math.max(1,contribPerYear));
-  const totalSteps   = Math.round(stepsPerYear * Math.max(0,years));
-  const stepRate     = Math.pow(1+Math.max(0,apr), 1/Math.max(1,compoundPerYear)) - 1;
-  const sContrib     = stepsPerYear / Math.max(1,contribPerYear);
-  const sCompound    = stepsPerYear / Math.max(1,compoundPerYear);
+    // Модель капитала
+    function simulateFV({ principal, apr, years, contribution, contribPerYear, compoundPerYear, reinvest }) {
+      const stepsPerYear = lcm(Math.max(1,compoundPerYear), Math.max(1,contribPerYear));
+      const totalSteps   = Math.round(stepsPerYear * Math.max(0,years));
+      const stepRate     = Math.pow(1+Math.max(0,apr), 1/Math.max(1,compoundPerYear)) - 1;
+      const sContrib     = stepsPerYear / Math.max(1,contribPerYear);
+      const sCompound    = stepsPerYear / Math.max(1,compoundPerYear);
 
-  let balance = Math.max(0, principal);
-  let paidIn  = Math.max(0, principal);
-  let incomeWithdrawn = 0;
+      let balance = Math.max(0, principal);
+      let paidIn  = Math.max(0, principal);
+      let incomeWithdrawn = 0;
 
-  for (let s=1; s<=totalSteps; s++){
-    if (contribPerYear>0 && s % sContrib === 0) { balance += Math.max(0,contribution); paidIn += Math.max(0,contribution); }
-    if (compoundPerYear>0 && s % sCompound === 0) {
-      const interest = balance * stepRate;
-      if (reinvest) balance += interest; else incomeWithdrawn += interest;
-    }
-  }
-  const fv = balance;
-  const income = reinvest ? fv - paidIn : incomeWithdrawn;
-  return { fv, paidIn, income };
-}
-
-// Надёжный двоичный поиск (без «космоса»)
-function solveBisection(f, lo, hi, eps = 1e-7, maxIter = 200) {
-  let flo = f(lo), fhi = f(hi);
-
-  // если при нулевой границе цель уже достигается — решение 0
-  if (flo >= 0) return 0;
-
-  // расширяем верхнюю границу, пока знак не сменится
-  let guard = 0;
-  while (flo * fhi > 0 && guard < 30) {
-    hi = hi * 2 + 1;
-    fhi = f(hi);
-    guard++;
-    if (!isFinite(hi)) break;
-  }
-
-  // нет смены знака — решения нет
-  if (flo * fhi > 0) return null;
-
-  for (let i=0;i<maxIter;i++){
-    const mid = (lo + hi) / 2;
-    const fmid = f(mid);
-    if (Math.abs(fmid) < eps) return mid;
-    if (flo * fmid < 0) { hi = mid; fhi = fmid; } else { lo = mid; flo = fmid; }
-  }
-  return (lo + hi) / 2;
-}
-
-/*** UI helpers ***/
-function Toggle({ checked, onChange, label, disabled=false }){
-  return (
-    <label className={`flex items-center gap-3 select-none ${disabled?'opacity-60 pointer-events-none':''}`}>
-      <button type="button" role="switch" aria-checked={checked}
-        onClick={()=>!disabled && onChange(!checked)}
-        className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${checked?'bg-indigo-600':'bg-zinc-600'}`}>
-        <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${checked?'translate-x-6':'translate-x-1'}`}/>
-      </button>
-      <span className="text-zinc-200 text-sm">{label}</span>
-    </label>
-  );
-}
-
-function Segmented({ options, value, onChange }){
-  return (
-    <div className="flex flex-wrap gap-1 rounded-2xl border border-zinc-800 p-1 bg-zinc-900">
-      {options.map(o=>(
-        <button key={o.key} type="button" onClick={()=>onChange(o.key)}
-          className={`px-3 py-2 rounded-xl text-sm font-medium transition ${value===o.key?'bg-indigo-600 text-white':'text-zinc-300 hover:text-zinc-100'}`}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-// tap-to-set для range
-function useTapToSetRange({ min, max, setValue }){
-  const ref = useRef(null);
-  useEffect(()=>{
-    const el = ref.current; if (!el) return;
-    const handler = (e)=>{
-      const rect = el.getBoundingClientRect();
-      const x = (e.clientX ?? (e.touches && e.touches[0]?.clientX)) - rect.left;
-      const ratio = Math.min(1, Math.max(0, x / rect.width));
-      setValue(min + ratio * (max - min));
-    };
-    el.addEventListener('pointerdown', handler, { passive:true });
-    el.addEventListener('touchstart', handler, { passive:true });
-    return ()=>{ el.removeEventListener('pointerdown', handler); el.removeEventListener('touchstart', handler); };
-  }, [min, max, setValue]);
-  return ref;
-}
-
-function SliderRow({ label, value, setValue, min, max, step=1, formatRight, disabled=false }){
-  const ref = useTapToSetRange({ min, max, setValue });
-  return (
-    <div className="flex flex-col gap-1">
-      <div className="text-sm text-zinc-300">{label}</div>
-      <div className="flex items-center gap-3">
-        <input ref={ref} type="range" min={min} max={max} step={step}
-          value={Number.isFinite(value)?value:0}
-          onChange={e=>setValue(Number(e.target.value))}
-          disabled={disabled}/>
-        <input type="number" className="w-36 bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-zinc-100"
-          value={Number.isFinite(value)?Number(value.toFixed(2)):0}
-          onChange={e=>setValue(Number(e.target.value))}
-          step={step} min={min} max={max} disabled={disabled}/>
-      </div>
-      <div className="text-xs text-zinc-500">{formatRight(value)}</div>
-    </div>
-  );
-}
-
-function EditableTable({ title, rows, setRows, colorClass='text-zinc-300' }){
-  const sumW = rows.reduce((a,b)=>a+(Number.isFinite(b.w)?b.w:0),0);
-  function update(i,k,v){
-    const cp=[...rows];
-    if (['w','r','s'].includes(k)){ const num=Number(v); cp[i]={...cp[i],[k]:isFinite(num)?num:0}; }
-    else cp[i]={...cp[i],[k]:String(v)};
-    setRows(cp);
-  }
-  function add(){ setRows([...rows,{ticker:'NEW',w:0.1,r:0.15,s:0.2}]); }
-  function remove(i){ const cp=[...rows]; cp.splice(i,1); setRows(cp); }
-  function normalize(){ const total=rows.reduce((a,b)=>a+b.w,0)||1; setRows(rows.map(r=>({...r,w:Number((r.w/total).toFixed(2))}))); }
-  return (
-    <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-      <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-semibold text-zinc-100">{title}</div>
-        <div className={`text-xs ${Math.abs(sumW-1)>0.02?'text-red-400':'text-green-400'}`}>Доли: {(sumW*100).toFixed(0)}%</div>
-      </div>
-      <div className="space-y-2">
-        {rows.map((row,idx)=>(
-          <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-            <input value={row.ticker} onChange={e=>update(idx,'ticker',e.target.value)}
-              className="col-span-5 bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-xs text-white"/>
-            <input type="number" value={Number(row.w.toFixed(2))} step={0.05} min={0} max={1}
-              onChange={e=>update(idx,'w',e.target.value)}
-              className="col-span-2 bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-xs text-center text-white"/>
-            <div className="col-span-3 relative">
-              <input type="number" value={Math.round(row.r*100)} step={1}
-                onChange={e=>update(idx,'r',Number(e.target.value)/100)}
-                className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-xs text-center text-white"/>
-              <span className="absolute right-2 top-2 text-[10px] text-zinc-500">%</span>
-            </div>
-            <button onClick={()=>remove(idx)} className="col-span-2 text-zinc-500 hover:text-red-400">Удалить</button>
-          </div>
-        ))}
-      </div>
-      <div className="flex gap-2 mt-3">
-        <button onClick={add} className="flex-1 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-xs hover:bg-zinc-700">Добавить</button>
-        <button onClick={normalize} className={`flex-1 py-2 border border-zinc-700 rounded-lg text-xs hover:bg-zinc-800 ${colorClass}`}>Нормализовать</button>
-      </div>
-    </div>
-  );
-}
-
-/*** APP ***/
-function App(){
-  const localId = (()=>{ const k='demo_uid'; const ex=localStorage.getItem(k); if(ex) return ex; const v=String(1e9*Math.random()|0); localStorage.setItem(k,v); return v })();
-  const userId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : localId;
-  const LS_KEY = 'ai-invest-calc-v1';
-
-  const [tab,setTab] = useState('calc');       // calc | forecast
-  const [mode,setMode] = useState('contrib');  // income | rate | principal | term | contrib
-
-  const [target,setTarget] = useState(1_000_000);
-  const [principal,setPrincipal] = useState(100_000);
-  const [years,setYears] = useState(5);
-  const [contrib,setContrib] = useState(10_000);
-
-  const [reinvest,setReinvest] = useState(true);
-  const [compoundKey,setCompoundKey] = useState('monthly');
-  const [contribKey,setContribKey]   = useState('monthly');
-  const compoundPerYear = PERIODS.find(p=>p.key===compoundKey)?.perYear ?? 12;
-  const contribPerYear  = PERIODS.find(p=>p.key===contribKey)?.perYear ?? 12;
-
-  const [usePortfolioReturn,setUsePortfolioReturn] = useState(true);
-  const [bondShare,setBondShare] = useState(0.7);
-  const [rho,setRho] = useState(0.2);
-  const [bonds,setBonds] = useState([
-    { ticker:"ОФЗ-26238", w:0.35, r:0.11, s:0.04 },
-    { ticker:"ОФЗ-26212", w:0.35, r:0.10, s:0.04 },
-    { ticker:"GAZP-OBL",  w:0.15, r:0.12, s:0.06 },
-    { ticker:"SBER-OBL",  w:0.15, r:0.12, s:0.06 },
-  ]);
-  const [stocks,setStocks] = useState([
-    { ticker:"SBER", w:0.20, r:0.22, s:0.30 },
-    { ticker:"GAZP", w:0.20, r:0.20, s:0.35 },
-    { ticker:"YNDX", w:0.20, r:0.24, s:0.35 },
-    { ticker:"LKOH", w:0.20, r:0.20, s:0.28 },
-    { ticker:"MGNT", w:0.20, r:0.18, s:0.25 },
-  ]);
-  const [manualAprPercent,setManualAprPercent] = useState(12);
-
-  const [loading,setLoading] = useState(true);
-  useEffect(()=>{
-    (async ()=>{
-      try {
-        const { data } = await sb.from('user_saves').select('data').eq('user_id', userId).maybeSingle();
-        let state = data?.data;
-        if (!state) { const raw = localStorage.getItem(LS_KEY); if (raw) state = JSON.parse(raw); }
-        if (state){
-          const apply = (k, fn) => { if (k in state) fn(state[k]) }
-          apply('mode', setMode);
-          apply('target', setTarget);
-          apply('principal', setPrincipal);
-          apply('years', setYears);
-          apply('contrib', setContrib);
-          apply('reinvest', setReinvest);
-          apply('compoundKey', setCompoundKey);
-          apply('contribKey', setContribKey);
-          apply('usePortfolioReturn', setUsePortfolioReturn);
-          apply('bondShare', setBondShare);
-          apply('rho', setRho);
-          apply('manualAprPercent', setManualAprPercent);
-          apply('bonds', setBonds);
-          apply('stocks', setStocks);
+      for (let s=1; s<=totalSteps; s++){
+        if (contribPerYear>0 && s % sContrib === 0) { balance += Math.max(0, contribution); paidIn += Math.max(0, contribution); }
+        if (compoundPerYear>0 && s % sCompound === 0) {
+          const interest = balance * stepRate;
+          if (reinvest) balance += interest; else incomeWithdrawn += interest;
         }
-      } finally { setLoading(false); }
-    })();
-  },[]);
-
-  const snapshot = { mode,target,principal,years,contrib,reinvest,compoundKey,contribKey,usePortfolioReturn,bondShare,rho,manualAprPercent,bonds,stocks };
-  useEffect(()=>{
-    if (loading) return;
-    const t=setTimeout(async ()=>{
-      localStorage.setItem(LS_KEY, JSON.stringify(snapshot));
-      try { await sb.from('user_saves').upsert({ user_id:userId, data:snapshot }); } catch(e){}
-    }, 600);
-    return ()=>clearTimeout(t);
-  }, [JSON.stringify(snapshot), loading]);
-
-  // Автовыключаем портфельную доходность, если цель — «Ставку»
-  useEffect(()=>{ if (mode==='rate') setUsePortfolioReturn(false); }, [mode]);
-
-  function totals(rows){ const ret=rows.reduce((a,r)=>a+r.w*r.r,0); const sigma=Math.sqrt(rows.reduce((a,r)=>a+Math.pow(r.w*r.s,2),0)); return {ret, sigma}; }
-  const bondsTot  = useMemo(()=>totals(bonds),[bonds]);
-  const stocksTot = useMemo(()=>totals(stocks),[stocks]);
-  const portRet   = bondShare*bondsTot.ret + (1-bondShare)*stocksTot.ret;
-  const portSigma = Math.sqrt(Math.pow(bondShare*bondsTot.sigma,2)+Math.pow((1-bondShare)*stocksTot.sigma,2)+2*bondShare*(1-bondShare)*rho*bondsTot.sigma*stocksTot.sigma);
-  const apr = usePortfolioReturn ? Math.max(0,portRet) : Math.max(0,manualAprPercent/100);
-
-  // Главный расчёт с корректным солвером и флагом «Недостижимо»
-  const result = useMemo(() => {
-    const base = { principal, apr, years, contribution:contrib, contribPerYear, compoundPerYear, reinvest };
-    let computed = simulateFV(base);
-    let computedValue = null;
-    let unreachable = false;
-
-    if (mode === 'income') {
-      computedValue = computed.income;
+      }
+      const fv = balance;
+      const income = reinvest ? fv - paidIn : incomeWithdrawn;
+      return { fv, paidIn, income };
     }
-    if (mode === 'contrib') {
-      const x = solveBisection(v=>simulateFV({ ...base, contribution:v }).fv - target, 0, Math.max(1, target*2));
-      if (x === null) unreachable = true; else { computedValue = x; computed = simulateFV({ ...base, contribution:x }); }
+
+    // Решатель (бисекция) с ограничениями
+    function solveBisection(f, lo, hi, eps=1e-7, maxIter=200){
+      let flo=f(lo), fhi=f(hi), guard=0;
+      while(flo*fhi>0 && guard<20){ hi = hi*1.6 + 0.5; fhi=f(hi); guard++; if(!isFinite(hi) || hi>3) break; } // верх до 300% годовых
+      if (Math.abs(flo)<eps) return lo;
+      if (Math.abs(fhi)<eps) return hi;
+      if (flo*fhi>0) return null; // нет сигнала смены знака → решения в диапазоне нет
+      for (let i=0;i<maxIter;i++){
+        const m=(lo+hi)/2, fm=f(m);
+        if (Math.abs(fm)<eps) return m;
+        if (flo*fm<0){ hi=m; fhi=fm; } else { lo=m; flo=fm; }
+      }
+      return (lo+hi)/2;
     }
-    if (mode === 'principal') {
-      const x = solveBisection(v=>simulateFV({ ...base, principal:v }).fv - target, 0, Math.max(1, target));
-      if (x === null) unreachable = true; else { computedValue = x; computed = simulateFV({ ...base, principal:x }); }
+
+    /** UI **/
+    function Toggle({ checked, onChange, label }){
+      return (
+        <label className="flex items-center gap-3 cursor-pointer select-none">
+          <button type="button" role="switch" aria-checked={checked}
+            onClick={()=>onChange(!checked)}
+            className={`relative inline-flex h-7 w-12 items-center rounded-full transition-colors ${checked?'bg-indigo-600':'bg-zinc-600'}`}>
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition ${checked?'translate-x-6':'translate-x-1'}`}/>
+          </button>
+          <span className="text-zinc-200 text-sm">{label}</span>
+        </label>
+      );
     }
-    if (mode === 'rate') {
-      const x = solveBisection(v=>simulateFV({ ...base, apr:v }).fv - target, 0, 10);
-      if (x === null) unreachable = true; else { computedValue = x*100; computed = simulateFV({ ...base, apr:x }); }
+
+    // tap-to-set для range
+    function useTapToSetRange({ min, max, setValue }){
+      const ref = useRef(null);
+      useEffect(()=>{
+        const el = ref.current; if (!el) return;
+        const handler = (e)=>{
+          const rect = el.getBoundingClientRect();
+          const x = (e.clientX ?? (e.touches && e.touches[0]?.clientX)) - rect.left;
+          const ratio = Math.min(1, Math.max(0, x / rect.width));
+          setValue(min + ratio * (max - min));
+        };
+        el.addEventListener('pointerdown', handler, { passive:true });
+        el.addEventListener('touchstart', handler, { passive:true });
+        return ()=>{
+          el.removeEventListener('pointerdown', handler);
+          el.removeEventListener('touchstart', handler);
+        };
+      }, [min, max, setValue]);
+      return ref;
     }
-    if (mode === 'term') {
-      const x = solveBisection(v=>simulateFV({ ...base, years:v }).fv - target, 0, 100);
-      if (x === null) unreachable = true; else { computedValue = x; computed = simulateFV({ ...base, years:x }); }
-    }
-    return { ...computed, computedValue, unreachable };
-  },[mode,target,principal,years,apr,contrib,reinvest,compoundPerYear,contribPerYear]);
 
-  const progress = target>0 ? Math.min(1, result.fv/target) : 0;
-
-  const forecast = useMemo(()=>{
-    const yrs = Math.max(0, Math.min(50, Math.round(years)));
-    const rows = [];
-    for (let y=0; y<=yrs; y++){
-      const r = simulateFV({ principal, apr, years:y, contribution:contrib, contribPerYear, compoundPerYear, reinvest });
-      rows.push({ year:y, ...r });
-    }
-    return rows;
-  },[principal,apr,years,contrib,contribPerYear,compoundPerYear,reinvest]);
-
-  const headline = (() => {
-    if (result.unreachable) return 'Недостижимо';
-    if (mode==='income' || mode==='contrib' || mode==='principal')
-      return cf.format(Math.max(0, result.computedValue ?? 0));
-    if (mode==='rate')
-      return `${(result.computedValue ?? 0).toFixed(2)}% годовых`;
-    if (mode==='term')
-      return `${(result.computedValue ?? 0).toFixed(2)} лет`;
-    return '—';
-  })();
-
-  const subTitleMap = {
-    income:'Расчётного дохода',
-    rate:'Необходимая ставка',
-    principal:'Необходимый стартовый капитал',
-    term:'Необходимый срок',
-    contrib:'Необходимый размер пополнений'
-  };
-
-  if (loading) return <div className="flex h-[100svh] items-center justify-center text-zinc-500">Загрузка…</div>;
-
-  return (
-    <div className="min-h-[100svh] safe bg-zinc-950 text-zinc-50 pb-6">
-      <div className="max-w-3xl mx-auto px-3">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="title-clamp font-bold">Инвестиционный калькулятор сложного процента с пополнением</h1>
-          <Segmented options={[{key:'calc',label:'Калькулятор'},{key:'forecast',label:'Прогноз'}]} value={tab} onChange={setTab}/>
-        </div>
-
-        {tab==='calc' && (
-          <>
-            <div className="grid lg:grid-cols-2 gap-4">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-                <div className="text-sm text-zinc-300 mb-2">Вычислить</div>
-                <div className="flex flex-col gap-2">
-                  {[
-                    {k:'income',t:'Доход'},
-                    {k:'rate',t:'Ставку'},
-                    {k:'principal',t:'Стартовый капитал'},
-                    {k:'term',t:'Срок достижения цели'},
-                    {k:'contrib',t:'Размер пополнений'},
-                  ].map(o=>(
-                    <label key={o.k} className="inline-flex items-center gap-3 cursor-pointer">
-                      <input type="radio" name="mode" className="h-5 w-5 accent-indigo-600" checked={mode===o.k} onChange={()=>setMode(o.k)}/>
-                      <span className="text-sm">{o.t}</span>
-                    </label>
-                  ))}
-                </div>
-
-                <div className="mt-4"><Toggle checked={reinvest} onChange={setReinvest} label="Реинвестировать доход"/></div>
-
-                <div className="mt-4">
-                  <div className="text-sm text-zinc-300 mb-1">Период реинвестирования</div>
-                  <Segmented options={PERIODS.map(p=>({key:p.key,label:p.label}))} value={compoundKey} onChange={setCompoundKey}/>
-                </div>
-                <div className="mt-3">
-                  <div className="text-sm text-zinc-300 mb-1">Периодичность пополнений</div>
-                  <Segmented options={PERIODS.map(p=>({key:p.key,label:p.label}))} value={contribKey} onChange={setContribKey}/>
-                </div>
-
-                <div className="mt-4">
-                  <Toggle
-                    checked={usePortfolioReturn}
-                    onChange={setUsePortfolioReturn}
-                    label="Использовать доходность портфеля (вместо ручной ставки)"
-                    disabled={mode==='rate'}
-                  />
-                  {mode==='rate' && (
-                    <div className="text-xs text-zinc-400 mt-1">
-                      Для расчёта ставки портфельная доходность отключена автоматически.
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-                <div className="text-sm text-zinc-300">Результат</div>
-                <div className="text-3xl font-semibold mt-1">{headline}</div>
-                <div className="text-sm text-zinc-400 mt-1">{subTitleMap[mode]}</div>
-
-                <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
-                  <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zинc-400">Итоговая сумма</div><div className="font-semibold">{cf.format(Math.max(0,result.fv))}</div></div>
-                  <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zинc-400">Всего внесено</div><div className="font-semibold">{cf.format(Math.max(0,result.paidIn))}</div></div>
-                  <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zинc-400">Доход</div><div className="font-semibold">{cf.format(Math.max(0,result.income))}</div></div>
-                  <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zинc-400">Эффективная доля дохода</div><div className="font-semibold">{result.fv>0?((result.income/result.fv)*100).toFixed(1)+'%':'—'}</div></div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
-                  <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zинc-400">Доходность портфеля (год)</div><div className="font-semibold">{pf.format(usePortfolioReturn?portRet:(manualAprPercent/100))}</div></div>
-                  <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zинc-400">Риск портфеля σ</div><div className="font-semibold">{(portSigma*100).toFixed(1)}%</div></div>
-                </div>
-
-                <div className="mt-3">
-                  <div className="flex justify-between text-xs text-zinc-400 mb-1"><span>Прогресс к цели</span><span>{(progress*100).toFixed(0)}%</span></div>
-                  <div className="h-3 rounded-full bg-zinc-800 overflow-hidden"><div className="h-full bg-indigo-600" style={{width:`${progress*100}%`}}></div></div>
-                </div>
-
-                {result.unreachable && (
-                  <div className="mt-2 text-xs text-red-400">
-                    При заданных параметрах цель недостижима. Увеличьте срок или пополнения, снизьте цель или ожидаемую доходность.
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 mt-4">
-              <div className="mb-2 text-base font-semibold">Быстрые ползунки</div>
-              <div className="grid md:grid-cols-2 gap-4">
-                <!-- Цель: дал высокий верхний предел, чтобы «не упираться» -->
-                <SliderRow label="Ваша цель, ₽" value={target} setValue={setTarget}
-                  min={0} max={100_000_000} step={5000} formatRight={n=>cf.format(n)}/>
-                <SliderRow label="Стартовый капитал, ₽" value={principal} setValue={setPrincipal}
-                  min={0} max={Math.max(500_000, principal, target)} step={5000} formatRight={n=>cf.format(n)}
-                  disabled={mode==='principal'}/>
-                <SliderRow label="Срок инвестирования, лет" value={years} setValue={setYears}
-                  min={0} max={50} step={0.1} formatRight={n=>`${n.toFixed(1)} лет`} disabled={mode==='term'}/>
-                <SliderRow label="Ставка, % годовых" value={manualAprPercent} setValue={setManualAprPercent}
-                  min={0} max={50} step={0.1} formatRight={n=>`${n.toFixed(1)}% / год`}
-                  disabled={usePortfolioReturn || mode==='rate'}/>
-                <SliderRow label="Размер пополнений, ₽" value={contrib} setValue={setContrib}
-                  min={0} max={Math.max(50_000, contrib, Math.round(target/Math.max(12,years*12)))} step={500}
-                  formatRight={n=>cf.format(n)} disabled={mode==='contrib'}/>
-              </div>
-            </div>
-
-            <div className="grid lg:grid-cols-3 gap-4 mt-4">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-                <div className="text-base font-semibold mb-2">Аллокация</div>
-                <SliderRow label="Доля облигаций, %" value={Math.round(bondShare*100)} setValue={v=>setBondShare(Math.min(100,Math.max(0,v))/100)}
-                  min={0} max={100} step={1} formatRight={n=>`${n.toFixed(0)}% облигации / ${(100-n).toFixed(0)}% акции`}/>
-                <div className="mt-2"></div>
-                <SliderRow label="Корреляция облигации–акции, ρ" value={rho} setValue={setRho} min={-0.9} max={0.9} step={0.01} formatRight={n=>`${(n*100).toFixed(0)}%`}/>
-                <div className="mt-2 text-sm text-zinc-500">Доходность облигаций: {pf.format(bondsTot.ret)} · Риск: {(bondsTot.sigma*100).toFixed(1)}%</div>
-                <div className="text-sm text-zinc-500">Доходность акций: {pf.format(stocksTot.ret)} · Риск: {(stocksTot.sigma*100).toFixed(1)}%</div>
-              </div>
-              <div className="lg:col-span-2 flex flex-col gap-4">
-                <EditableTable title="Консервативный блок (облигации)" rows={bonds} setRows={setBonds} colorClass="text-blue-400"/>
-                <EditableTable title="Блок роста (акции)" rows={stocks} setRows={setStocks} colorClass="text-purple-400"/>
-              </div>
-            </div>
-          </>
-        )}
-
-        {tab==='forecast' && (
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-            <div className="mb-3 text-xl font-semibold">Шаг 5. Прогноз капитала</div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-              <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Ожидаемая доходность</div><div className="font-semibold">{pf.format(apr)}</div></div>
-              <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Ставка за месяц</div><div className="font-semibold">{((Math.pow(1+apr,1/12)-1)*100).toFixed(1)}%</div></div>
-              <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Реинвест</div><div className="font-semibold">{reinvest?'вкл.':'выкл.'}</div></div>
-              <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Периоды/год</div><div className="font-semibold">реинв: {compoundPerYear} · взносы: {contribPerYear}</div></div>
-            </div>
-            <div className="overflow-auto rounded-xl border border-zinc-800">
-              <table className="min-w-full text-sm">
-                <thead className="bg-zinc-950 text-zinc-400">
-                  <tr><th className="px-4 py-2 text-left">Год</th><th className="px-4 py-2 text-left">Итог (₽)</th><th className="px-4 py-2 text-left">Внесено (₽)</th><th className="px-4 py-2 text-left">Доход (₽)</th></tr>
-                </thead>
-                <tbody>
-                  {forecast.map(r=>(
-                    <tr key={r.year} className="odd:bg-zinc-900 even:bg-zinc-900/70">
-                      <td className="px-4 py-1.5">{r.year}</td>
-                      <td className="px-4 py-1.5">{cf.format(Math.max(0,r.fv))}</td>
-                      <td className="px-4 py-1.5">{cf.format(Math.max(0,r.paidIn))}</td>
-                      <td className="px-4 py-1.5">{cf.format(Math.max(0,r.income))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+    function SliderRow({ label, value, setValue, min, max, step=1, formatRight, disabled=false }){
+      const ref = useTapToSetRange({ min, max, setValue });
+      return (
+        <div className="flex flex-col gap-1">
+          <div className="text-sm text-zinc-300">{label}</div>
+          <div className="flex items-center gap-3">
+            <input ref={ref} type="range" min={min} max={max} step={step}
+              value={Number.isFinite(value)?value:0}
+              onChange={e=>setValue(Number(e.target.value))}
+              disabled={disabled}/>
+            <input type="number" className="w-36 bg-zinc-900 border border-zinc-700 rounded-xl px-3 py-2 text-zinc-100"
+              value={Number.isFinite(value)?Number(value.toFixed(2)):0}
+              onChange={e=>setValue(Number(e.target.value))}
+              step={step} min={min} max={max} disabled={disabled}/>
           </div>
-        )}
-      </div>
-    </div>
-  );
-}
+          <div className="text-xs text-zinc-500">{formatRight(value)}</div>
+        </div>
+      );
+    }
 
-const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<App />);
-</script>
+    function Segmented({ options, value, onChange }){
+      return (
+        <div className="flex flex-wrap gap-1 rounded-2xl border border-zinc-800 p-1 bg-zinc-900">
+          {options.map(o=>(
+            <button key={o.key} type="button" onClick={()=>onChange(o.key)}
+              className={`px-3 py-2 rounded-xl text-sm font-medium transition ${value===o.key?'bg-indigo-600 text-white':'text-zinc-300 hover:text-zinc-100'}`}>
+              {o.label}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    function EditableTable({ title, rows, setRows, colorClass='text-zinc-300' }){
+      const sumW = rows.reduce((a,b)=>a+(Number.isFinite(b.w)?b.w:0),0);
+      function update(i,k,v){
+        const cp=[...rows];
+        if (['w','r','s'].includes(k)){ const num=Number(v); cp[i]={...cp[i],[k]:isFinite(num)?num:0}; }
+        else cp[i]={...cp[i],[k]:String(v)};
+        setRows(cp);
+      }
+      function add(){ setRows([...rows,{ticker:'NEW',w:0.1,r:0.15,s:0.2}]); }
+      function remove(i){ const cp=[...rows]; cp.splice(i,1); setRows(cp); }
+      function normalize(){ const total=rows.reduce((a,b)=>a+b.w,0)||1; setRows(rows.map(r=>({...r,w:Number((r.w/total).toFixed(2))}))); }
+      return (
+        <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-semibold text-zinc-100">{title}</div>
+            <div className={`text-xs ${Math.abs(sumW-1)>0.02?'text-red-400':'text-green-400'}`}>Доли: {(sumW*100).toFixed(0)}%</div>
+          </div>
+          <div className="space-y-2">
+            {rows.map((row,idx)=>(
+              <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                <input value={row.ticker} onChange={e=>update(idx,'ticker',e.target.value)}
+                  className="col-span-5 bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-xs text-white"/>
+                <input type="number" value={Number(row.w.toFixed(2))} step={0.05} min={0} max={1}
+                  onChange={e=>update(idx,'w',e.target.value)}
+                  className="col-span-2 bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-xs text-center text-white"/>
+                <div className="col-span-3 relative">
+                  <input type="number" value={Math.round(row.r*100)} step={1}
+                    onChange={e=>update(idx,'r',Number(e.target.value)/100)}
+                    className="w-full bg-zinc-800 border border-zinc-700 rounded px-2 py-2 text-xs text-center text-white"/>
+                  <span className="absolute right-2 top-2 text-[10px] text-zinc-500">%</span>
+                </div>
+                <button onClick={()=>remove(idx)} className="col-span-2 text-zinc-500 hover:text-red-400">Удалить</button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={add} className="flex-1 py-2 bg-zinc-800 text-zinc-300 rounded-lg text-xs hover:bg-zinc-700">Добавить</button>
+            <button onClick={normalize} className={`flex-1 py-2 border border-zinc-700 rounded-lg text-xs hover:bg-zinc-800 ${colorClass}`}>Нормализовать</button>
+          </div>
+        </div>
+      );
+    }
+
+    /*** APP ***/
+    function App(){
+      const localId = (()=>{ const k='demo_uid'; const ex=localStorage.getItem(k); if(ex) return ex; const v=String(1e9*Math.random()|0); localStorage.setItem(k,v); return v })();
+      const userId = tg?.initDataUnsafe?.user?.id ? String(tg.initDataUnsafe.user.id) : localId;
+      const LS_KEY = 'ai-invest-calc-v1';
+
+      const [tab,setTab] = useState('calc');       // calc | forecast
+      const [mode,setMode] = useState('contrib');  // income | rate | principal | term | contrib
+
+      const [target,setTarget] = useState(1_000_000);
+      const [principal,setPrincipal] = useState(100_000);
+      const [years,setYears] = useState(5);
+      const [contrib,setContrib] = useState(10_000);
+
+      const [reinvest,setReinvest] = useState(true);
+      const [compoundKey,setCompoundKey] = useState('monthly');
+      const [contribKey,setContribKey]   = useState('monthly');
+      const compoundPerYear = PERIODS.find(p=>p.key===compoundKey)?.perYear ?? 12;
+      const contribPerYear  = PERIODS.find(p=>p.key===contribKey)?.perYear ?? 12;
+
+      const [usePortfolioReturn,setUsePortfolioReturn] = useState(true);
+      const [bondShare,setBondShare] = useState(0.7);
+      const [rho,setRho] = useState(0.2);
+      const [bonds,setBonds] = useState([
+        { ticker:"ОФЗ-26238", w:0.35, r:0.11, s:0.04 },
+        { ticker:"ОФЗ-26212", w:0.35, r:0.10, s:0.04 },
+        { ticker:"GAZP-OBL",  w:0.15, r:0.12, s:0.06 },
+        { ticker:"SBER-OBL",  w:0.15, r:0.12, s:0.06 },
+      ]);
+      const [stocks,setStocks] = useState([
+        { ticker:"SBER", w:0.20, r:0.22, s:0.30 },
+        { ticker:"GAZP", w:0.20, r:0.20, s:0.35 },
+        { ticker:"YNDX", w:0.20, r:0.24, s:0.35 },
+        { ticker:"LKOH", w:0.20, r:0.20, s:0.28 },
+        { ticker:"MGNT", w:0.20, r:0.18, s:0.25 },
+      ]);
+      const [manualAprPercent,setManualAprPercent] = useState(12);
+
+      // режим → какой слайдер блокируем
+      const MODE_META = {
+        income:    { lock: null },                  // ничего не блокируем (доход — производная)
+        rate:      { lock: 'apr', reset: setManualAprPercent },
+        principal: { lock: 'principal', reset: setPrincipal },
+        term:      { lock: 'years', reset: setYears },
+        contrib:   { lock: 'contrib', reset: setContrib }
+      };
+
+      const [loading,setLoading] = useState(true);
+      useEffect(()=>{
+        (async ()=>{
+          try {
+            const { data } = await sb.from('user_saves').select('data').eq('user_id', userId).maybeSingle();
+            let state = data?.data;
+            if (!state) { const raw = localStorage.getItem(LS_KEY); if (raw) state = JSON.parse(raw); }
+            if (state){
+              const apply = (k, fn) => { if (k in state) fn(state[k]) }
+              apply('mode', setMode);
+              apply('target', setTarget);
+              apply('principal', setPrincipal);
+              apply('years', setYears);
+              apply('contrib', setContrib);
+              apply('reinvest', setReinvest);
+              apply('compoundKey', setCompoundKey);
+              apply('contribKey', setContribKey);
+              apply('usePortfolioReturn', setUsePortfolioReturn);
+              apply('bondShare', setBondShare);
+              apply('rho', setRho);
+              apply('manualAprPercent', setManualAprPercent);
+              apply('bonds', setBonds);
+              apply('stocks', setStocks);
+            }
+          } finally { setLoading(false); }
+        })();
+      },[]);
+
+      const snapshot = { mode,target,principal,years,contrib,reinvest,compoundKey,contribKey,usePortfolioReturn,bondShare,rho,manualAprPercent,bonds,stocks };
+      useEffect(()=>{
+        if (loading) return;
+        const t=setTimeout(async ()=>{
+          localStorage.setItem(LS_KEY, JSON.stringify(snapshot));
+          try { await sb.from('user_saves').upsert({ user_id:userId, data:snapshot }); } catch(e){}
+        }, 600);
+        return ()=>clearTimeout(t);
+      }, [JSON.stringify(snapshot), loading]);
+
+      // При смене режима — обнуляем искомую величину
+      useEffect(()=>{
+        const meta = MODE_META[mode];
+        if (meta?.reset){
+          meta.reset(meta.lock==='apr' ? 0 : 0);
+        }
+      }, [mode]);
+
+      function totals(rows){ const ret=rows.reduce((a,r)=>a+r.w*r.r,0); const sigma=Math.sqrt(rows.reduce((a,r)=>a+Math.pow(r.w*r.s,2),0)); return {ret, sigma}; }
+      const bondsTot  = useMemo(()=>totals(bonds),[bonds]);
+      const stocksTot = useMemo(()=>totals(stocks),[stocks]);
+      const portRet   = bondShare*bondsTot.ret + (1-bondShare)*stocksTot.ret;
+      const portSigma = Math.sqrt(Math.pow(bondShare*bondsTot.sigma,2)+Math.pow((1-bondShare)*stocksTot.sigma,2)+2*bondShare*(1-bondShare)*rho*bondsTot.sigma*stocksTot.sigma);
+      const apr = usePortfolioReturn ? Math.max(0,portRet) : Math.max(0,manualAprPercent/100);
+
+      const baseParams = { principal, apr, years, contribution:contrib, contribPerYear, compoundPerYear, reinvest };
+
+      const result = useMemo(()=>{
+        let computed = simulateFV(baseParams);
+        let computedValue = null;
+
+        if (mode==='income'){
+          computedValue = computed.income;
+        }
+        if (mode==='contrib'){
+          const x = solveBisection(v=>simulateFV({ ...baseParams, contribution:v }).fv - target, 0, Math.max(1,target*2));
+          computed = simulateFV({ ...baseParams, contribution:x??0 }); computedValue = x??0;
+        }
+        if (mode==='principal'){
+          const x = solveBisection(v=>simulateFV({ ...baseParams, principal:v }).fv - target, 0, Math.max(1,target));
+          computed = simulateFV({ ...baseParams, principal:x??0 }); computedValue = x??0;
+        }
+        if (mode==='rate'){
+          const f = (v)=>simulateFV({ ...baseParams, apr:v }).fv - target;
+          // сначала проверяем нулевую ставку — если цель уже закрыта, берём 0%
+          const zero = f(0);
+          let x = null;
+          if (zero < 0){ // не хватает — ищем до 300%
+            x = solveBisection(f, 0, 1); // до 100% годовых
+            if (x===null) x = 0;        // если нет решения в диапазоне — 0%
+          } else {
+            x = 0;
+          }
+          computed = simulateFV({ ...baseParams, apr:x }); computedValue = x*100;
+        }
+        if (mode==='term'){
+          const x = solveBisection(v=>simulateFV({ ...baseParams, years:v }).fv - target, 0, 100);
+          computed = simulateFV({ ...baseParams, years:x??0 }); computedValue = x??0;
+        }
+        return { ...computed, computedValue };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      },[mode,target,principal,years,apr,contrib,reinvest,compoundPerYear,contribPerYear]);
+
+      const progress = target>0 ? Math.min(1, result.fv/target) : 0;
+
+      const forecast = useMemo(()=>{
+        const yrs = Math.max(0, Math.min(50, Math.round(years)));
+        const rows = [];
+        for (let y=0; y<=yrs; y++){
+          const r = simulateFV({ ...baseParams, years:y });
+          rows.push({ year:y, ...r });
+        }
+        return rows;
+      },[principal,apr,years,contrib,contribPerYear,compoundPerYear,reinvest]);
+
+      const headline = (()=>{
+        if (mode==='income' || mode==='contrib' || mode==='principal') return cf.format(Math.max(0, result.computedValue??0));
+        if (mode==='rate') return `${(result.computedValue??0).toFixed(2)}% годовых`;
+        if (mode==='term') return `${(result.computedValue??0).toFixed(2)} лет`;
+        return '—';
+      })();
+      const subTitleMap = {
+        income:'Расчётного дохода',
+        rate:'Необходимая ставка',
+        principal:'Необходимый стартовый капитал',
+        term:'Необходимый срок',
+        contrib:'Необходимый размер пополнений'
+      };
+
+      if (loading) return <div className="flex h-[100svh] items-center justify-center text-zinc-500">Загрузка…</div>;
+
+      const locked = MODE_META[mode]?.lock;
+
+      return (
+        <div className="min-h-[100svh] safe bg-zinc-950 text-zinc-50 pb-6">
+          <div className="max-w-3xl mx-auto px-3">
+            <div className="flex items-center justify-between mb-4">
+              <h1 className="title-clamp font-bold">Инвестиционный калькулятор сложного процента с пополнением</h1>
+              <Segmented options={[{key:'calc',label:'Калькулятор'},{key:'forecast',label:'Прогноз'}]} value={tab} onChange={setTab}/>
+            </div>
+
+            {tab==='calc' && (
+              <>
+                <div className="grid lg:grid-cols-2 gap-4">
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+                    <div className="text-sm text-zinc-300 mb-2">Вычислить</div>
+                    <div className="flex flex-col gap-2">
+                      {[
+                        {k:'income',t:'Доход'},
+                        {k:'rate',t:'Ставку'},
+                        {k:'principal',t:'Стартовый капитал'},
+                        {k:'term',t:'Срок достижения цели'},
+                        {k:'contrib',t:'Размер пополнений'},
+                      ].map(o=>(
+                        <label key={o.k} className="inline-flex items-center gap-3 cursor-pointer">
+                          <input type="radio" name="mode" className="h-5 w-5 accent-indigo-600" checked={mode===o.k} onChange={()=>setMode(o.k)}/>
+                          <span className="text-sm">{o.t}</span>
+                        </label>
+                      ))}
+                    </div>
+
+                    <div className="mt-4"><Toggle checked={reinvest} onChange={setReinvest} label="Реинвестировать доход"/></div>
+
+                    <div className="mt-4">
+                      <div className="text-sm text-zinc-300 mb-1">Период реинвестирования</div>
+                      <Segmented options={PERIODS.map(p=>({key:p.key,label:p.label}))} value={compoundKey} onChange={setCompoundKey}/>
+                    </div>
+                    <div className="mt-3">
+                      <div className="text-sm text-zinc-300 mb-1">Периодичность пополнений</div>
+                      <Segmented options={PERIODS.map(p=>({key:p.key,label:p.label}))} value={contribKey} onChange={setContribKey}/>
+                    </div>
+
+                    <div className="mt-4">
+                      <Toggle checked={usePortfolioReturn} onChange={setUsePortfolioReturn} label="Использовать доходность портфеля (вместо ручной ставки)"/>
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+                    <div className="text-sm text-zinc-300">Результат</div>
+                    <div className="text-3xl font-semibold mt-1">{headline}</div>
+                    <div className="text-sm text-zinc-400 mt-1">{subTitleMap[mode]}</div>
+
+                    <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
+                      <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Итоговая сумма</div><div className="font-semibold">{cf.format(Math.max(0,result.fv))}</div></div>
+                      <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Всего внесено</div><div className="font-semibold">{cf.format(Math.max(0,result.paidIn))}</div></div>
+                      <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Доход</div><div className="font-semibold">{cf.format(Math.max(0,result.income))}</div></div>
+                      <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Эффективная доля дохода</div><div className="font-semibold">{result.fv>0?((result.income/result.fv)*100).toFixed(1)+'%':'—'}</div></div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
+                      <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Доходность портфеля (год)</div><div className="font-semibold">{pf.format(usePortfolioReturn?portRet:(manualAprPercent/100))}</div></div>
+                      <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Риск портфеля σ</div><div className="font-semibold">{(portSigma*100).toFixed(1)}%</div></div>
+                    </div>
+
+                    <div className="mt-3">
+                      <div className="flex justify-between text-xs text-zinc-400 mb-1"><span>Прогресс к цели</span><span>{(progress*100).toFixed(0)}%</span></div>
+                      <div className="h-3 rounded-full bg-zinc-800 overflow-hidden"><div className="h-full bg-indigo-600" style={{width:`${progress*100}%`}}></div></div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 mt-4">
+                  <div className="mb-2 text-base font-semibold">Быстрые ползунки</div>
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <SliderRow label="Ваша цель, ₽" value={target} setValue={setTarget}
+                      min={0} max={100_000_000} step={5000} formatRight={n=>cf.format(n)}/>
+                    <SliderRow label="Стартовый капитал, ₽" value={principal} setValue={setPrincipal}
+                      min={0} max={Math.max(500_000, target)} step={5000} formatRight={n=>cf.format(n)} disabled={locked==='principal'}/>
+                    <SliderRow label="Срок инвестирования, лет" value={years} setValue={setYears}
+                      min={0} max={50} step={0.1} formatRight={n=>`${n.toFixed(1)} лет`} disabled={locked==='years'}/>
+                    <SliderRow label="Ставка, % годовых" value={manualAprPercent} setValue={setManualAprPercent}
+                      min={0} max={50} step={0.1} formatRight={n=>`${n.toFixed(1)}% / год`} disabled={locked==='apr' || usePortfolioReturn}/>
+                    <SliderRow label="Размер пополнений, ₽" value={contrib} setValue={setContrib}
+                      min={0} max={2_000_000} step={500} formatRight={n=>cf.format(n)} disabled={locked==='contrib'}/>
+                  </div>
+                </div>
+
+                <div className="grid lg:grid-cols-3 gap-4 mt-4">
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+                    <div className="text-base font-semibold mb-2">Аллокация</div>
+                    <SliderRow label="Доля облигаций, %" value={Math.round(bondShare*100)} setValue={v=>setBondShare(Math.min(100,Math.max(0,v))/100)} min={0} max={100} step={1} formatRight={n=>`${n.toFixed(0)}% облигации / ${(100-n).toFixed(0)}% акции`}/>
+                    <div className="mt-2"></div>
+                    <SliderRow label="Корреляция облигации–акции, ρ" value={rho} setValue={setRho} min={-0.9} max={0.9} step={0.01} formatRight={n=>`${(n*100).toFixed(0)}%`}/>
+                    <div className="mt-2 text-sm text-zinc-500">Доходность облигаций: {pf.format(bondsTot.ret)} · Риск: {(bondsTot.sigma*100).toFixed(1)}%</div>
+                    <div className="text-sm text-zinc-500">Доходность акций: {pf.format(stocksTot.ret)} · Риск: {(stocksTot.sigma*100).toFixed(1)}%</div>
+                  </div>
+                  <div className="lg:col-span-2 flex flex-col gap-4">
+                    <EditableTable title="Консервативный блок (облигации)" rows={bonds} setRows={setBonds} colorClass="text-blue-400"/>
+                    <EditableTable title="Блок роста (акции)" rows={stocks} setRows={setStocks} colorClass="text-purple-400"/>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {tab==='forecast' && (
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
+                <div className="mb-3 text-xl font-semibold">Шаг 5. Прогноз капитала</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                  <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Ожидаемая доходность</div><div className="font-semibold">{pf.format(apr)}</div></div>
+                  <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Ставка за месяц</div><div className="font-semibold">{((Math.pow(1+apr,1/12)-1)*100).toFixed(1)}%</div></div>
+                  <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Реинвест</div><div className="font-semibold">{reinvest?'вкл.':'выкл.'}</div></div>
+                  <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Периоды/год</div><div className="font-semibold">реинв: {compoundPerYear} · взносы: {contribPerYear}</div></div>
+                </div>
+                <div className="overflow-auto rounded-xl border border-zinc-800">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-zinc-950 text-zinc-400">
+                      <tr><th className="px-4 py-2 text-left">Год</th><th className="px-4 py-2 text-left">Итог (₽)</th><th className="px-4 py-2 text-left">Внесено (₽)</th><th className="px-4 py-2 text-left">Доход (₽)</th></tr>
+                    </thead>
+                    <tbody>
+                      {forecast.map(r=>(
+                        <tr key={r.year} className="odd:bg-zinc-900 even:bg-zinc-900/70">
+                          <td className="px-4 py-1.5">{r.year}</td>
+                          <td className="px-4 py-1.5">{cf.format(Math.max(0,r.fv))}</td>
+                          <td className="px-4 py-1.5">{cf.format(Math.max(0,r.paidIn))}</td>
+                          <td className="px-4 py-1.5">{cf.format(Math.max(0,r.income))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
 </body>
 </html>
