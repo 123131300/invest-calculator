@@ -34,9 +34,9 @@
     :root { color-scheme: dark; }
     html, body {
       height: 100%;
-      overscroll-behavior-y: contain;   /* меньше шансов свернуть ап */
+      overscroll-behavior-y: contain;
       overscroll-behavior-x: none;
-      touch-action: pan-y;              /* запрет горизонтальных жестов */
+      touch-action: pan-y;
       -webkit-text-size-adjust: 100%;
     }
     body{
@@ -45,12 +45,10 @@
       -webkit-tap-highlight-color:transparent;
       margin:0;
     }
-    /* безопасные отступы под вырезы */
     .safe {
       padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
       padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
     }
-    /* Глобальный скроллбар */
     ::-webkit-scrollbar{ width:6px; height:6px }
     ::-webkit-scrollbar-track{ background:#18181b }
     ::-webkit-scrollbar-thumb{ background:#4f46e5; border-radius:3px }
@@ -60,8 +58,9 @@
       -webkit-appearance:none; appearance:none;
       width:100%;
       background:transparent;
-      height:40px;              /* большая кликабельная зона */
+      height:40px;
       cursor:pointer;
+      touch-action: pan-y;
     }
     input[type="range"]::-webkit-slider-runnable-track{
       height:10px; background:#3f3f46; border-radius:999px;
@@ -73,7 +72,7 @@
       -webkit-appearance:none; appearance:none;
       width:24px; height:24px; border-radius:50%;
       background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.5);
-      margin-top:-7px;          /* центрируем на треке */
+      margin-top:-7px;
     }
     input[type="range"]::-moz-range-thumb{
       width:24px; height:24px; border-radius:50%;
@@ -81,12 +80,25 @@
       box-shadow:0 1px 6px rgba(0,0,0,.5);
     }
 
-    /* Адаптив заголовков — без “расползания” */
     .title-clamp { font-size: clamp(20px, 4.5vw, 32px); line-height: 1.15; }
   </style>
+
+  <script>
+    // Для мини-аппа Telegram + анти-свайп
+    (function () {
+      const tg = window.Telegram?.WebApp;
+      tg?.ready?.(); tg?.expand?.(); tg?.enableClosingConfirmation?.();
+      tg?.setBackgroundColor?.('#09090b');
+      tg?.setHeaderColor?.('secondary_bg_color');
+
+      document.addEventListener('touchmove', (e) => {
+        const el = e.target.closest('input,textarea,select,[contenteditable=true]');
+        if (!el) e.preventDefault();
+      }, { passive:false });
+    })();
+  </script>
 </head>
 <body class="bg-zinc-950">
-
   <div id="root"></div>
 
   <script type="text/babel">
@@ -98,15 +110,6 @@
     const { useState, useEffect, useMemo, useRef } = React;
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     const tg = window.Telegram?.WebApp;
-
-    // Telegram init
-    try {
-      tg?.ready();
-      tg?.expand();
-      tg?.enableClosingConfirmation();   // запрос подтверждения при свайпе-вниз
-      tg?.setBackgroundColor?.('#09090b');
-      tg?.setHeaderColor?.('secondary_bg_color');
-    } catch(e) {}
 
     // helpers
     const cf = new Intl.NumberFormat('ru-RU', { style:'currency', currency:'RUB', maximumFractionDigits:0 });
@@ -123,6 +126,7 @@
     function gcd(a,b){ return b===0?Math.abs(a):gcd(b,a%b) }
     function lcm(a,b){ return Math.abs(a*b)/gcd(a,b) }
 
+    // --- FV (оставляем как есть)
     function simulateFV({ principal, apr, years, contribution, contribPerYear, compoundPerYear, reinvest }) {
       const stepsPerYear = lcm(Math.max(1,compoundPerYear), Math.max(1,contribPerYear));
       const totalSteps   = Math.round(stepsPerYear * years);
@@ -146,6 +150,64 @@
       return { fv, paidIn, income };
     }
 
+    // --- NEW: надёжный солвер требуемого взноса
+    function requiredContribution({
+      goal,
+      principal,
+      apr,                 // годовая доходность (доля)
+      years,
+      contribPerYear = 12,
+      compoundPerYear = 12,
+      reinvest = true,
+    }) {
+      if (years <= 0) return (principal >= goal) ? 0 : null;
+
+      // База: без пополнений
+      const baseFV = simulateFV({
+        principal, apr: Math.max(apr, -0.999), years,
+        contribution: 0, contribPerYear, compoundPerYear, reinvest
+      }).fv;
+
+      if (baseFV >= goal) return 0; // уже достигаем цель
+
+      // Если без реинвеста — линейно
+      if (!reinvest) {
+        const periods = Math.max(1, Math.round(years * Math.max(1, contribPerYear)));
+        const need = (goal - baseFV) / periods;
+        return need > 0 ? need : 0;
+      }
+
+      // Нелинейный случай — брекет + двоичный поиск
+      let lo = 0;
+      let hi = 1;
+      let fvHi = simulateFV({
+        principal, apr, years, contribution: hi,
+        contribPerYear, compoundPerYear, reinvest
+      }).fv;
+
+      let guard = 0;
+      while (fvHi < goal && guard < 60 && hi < 1e12) {
+        hi *= 2;
+        fvHi = simulateFV({
+          principal, apr, years, contribution: hi,
+          contribPerYear, compoundPerYear, reinvest
+        }).fv;
+        guard++;
+      }
+      if (fvHi < goal) return null; // недостижимо параметрически
+
+      for (let i=0; i<70; i++){
+        const mid = (lo + hi) / 2;
+        const fv = simulateFV({
+          principal, apr, years, contribution: mid,
+          contribPerYear, compoundPerYear, reinvest
+        }).fv;
+        if (fv >= goal) hi = mid; else lo = mid;
+      }
+      return hi;
+    }
+
+    // универсальные утилиты (оставим — используются в других режимах)
     function fvMinusTarget(variable, mode, p){
       const base = { principal:p.principal, apr:p.apr, years:p.years, contribution:p.contribution, contribPerYear:p.contribPerYear, compoundPerYear:p.compoundPerYear, reinvest:p.reinvest };
       if (mode==='apr')       return simulateFV({ ...base, apr:Math.max(0,variable) }).fv        - p.target;
@@ -192,7 +254,6 @@
       );
     }
 
-    // range с мгновенным тапом по треку
     function useTapToSetRange({ min, max, setValue }){
       const ref = useRef(null);
       useEffect(()=>{
@@ -361,15 +422,36 @@
       const portSigma = Math.sqrt(Math.pow(bondShare*bondsTot.sigma,2)+Math.pow((1-bondShare)*stocksTot.sigma,2)+2*bondShare*(1-bondShare)*rho*bondsTot.sigma*stocksTot.sigma);
       const apr = usePortfolioReturn ? Math.max(0,portRet) : Math.max(0,manualAprPercent/100);
 
+      // Динамический потолок цели — по текущим параметрам
+      const fvWithCurrentContrib = useMemo(()=>simulateFV({
+        principal, apr, years,
+        contribution: contrib, contribPerYear, compoundPerYear, reinvest
+      }).fv, [principal,apr,years,contrib,contribPerYear,compoundPerYear,reinvest]);
+
+      const goalMax = Math.round(Math.min(1e12, Math.max(1_000_000, target, fvWithCurrentContrib * 2)));
+
       const result = useMemo(()=>{
         const base = { principal, apr, years, contribution:contrib, contribPerYear, compoundPerYear, reinvest };
         let computed = simulateFV(base);
         let computedValue = null;
+        let impossible = false;
 
-        if (mode==='income'){ computedValue = computed.income; }
+        if (mode==='income'){
+          computedValue = computed.income;
+        }
         if (mode==='contrib'){
-          const x = solveBisection(v=>simulateFV({ ...base, contribution:v }).fv - target, 0, Math.max(1,target*2));
-          computed = simulateFV({ ...base, contribution:x??0 }); computedValue = x??0;
+          const xRaw = requiredContribution({
+            goal: target, principal, apr, years,
+            contribPerYear, compoundPerYear, reinvest
+          });
+          if (xRaw == null || Number.isNaN(xRaw)) {
+            impossible = true;
+            computedValue = null; // Недостижимо
+          } else {
+            const x = Math.max(0, xRaw);
+            computed = simulateFV({ ...base, contribution:x });
+            computedValue = x;
+          }
         }
         if (mode==='principal'){
           const x = solveBisection(v=>simulateFV({ ...base, principal:v }).fv - target, 0, Math.max(1,target));
@@ -383,7 +465,7 @@
           const x = solveBisection(v=>simulateFV({ ...base, years:v }).fv - target, 0, 100);
           computed = simulateFV({ ...base, years:x??0 }); computedValue = x??0;
         }
-        return { ...computed, computedValue };
+        return { ...computed, computedValue, impossible };
       },[mode,target,principal,years,apr,contrib,reinvest,compoundPerYear,contribPerYear]);
 
       const progress = target>0 ? Math.min(1, result.fv/target) : 0;
@@ -399,7 +481,11 @@
       },[principal,apr,years,contrib,contribPerYear,compoundPerYear,reinvest]);
 
       const headline = (()=>{
-        if (mode==='income' || mode==='contrib' || mode==='principal') return cf.format(Math.max(0, result.computedValue??0));
+        if (mode==='contrib'){
+          if (result.impossible) return 'Недостижимо';
+          return cf.format(Math.max(0, result.computedValue??0));
+        }
+        if (mode==='income' || mode==='principal') return cf.format(Math.max(0, result.computedValue??0));
         if (mode==='rate') return `${(result.computedValue??0).toFixed(2)}% годовых`;
         if (mode==='term') return `${(result.computedValue??0).toFixed(2)} лет`;
         return '—';
@@ -463,6 +549,17 @@
                     <div className="text-3xl font-semibold mt-1">{headline}</div>
                     <div className="text-sm text-zinc-400 mt-1">{subTitleMap[mode]}</div>
 
+                    {/* Пояснение для конверсии */}
+                    {mode==='contrib' && (
+                      <div className="text-xs text-zinc-500 mt-1">
+                        {result.impossible
+                          ? 'Недостижимо при текущем сроке и доходности. Увеличьте срок/доходность или снизьте цель.'
+                          : (result.computedValue===0
+                              ? 'Цель уже достижима без пополнений при текущих параметрах.'
+                              : 'Требуемое ежепериодное пополнение при текущем сроке и доходности портфеля.')}
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-2 gap-2 mt-3 text-sm">
                       <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Итоговая сумма</div><div className="font-semibold">{cf.format(Math.max(0,result.fv))}</div></div>
                       <div className="rounded-xl border border-zinc-800 p-3"><div className="text-zinc-400">Всего внесено</div><div className="font-semibold">{cf.format(Math.max(0,result.paidIn))}</div></div>
@@ -483,19 +580,24 @@
                 </div>
 
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4 mt-4">
-                  <div className="mb-2 text-base font-semibold">Быстрые ползунки</div>
+                  <div className="mb-2 text-base font-semibold text-zinc-100">Быстрые ползунки</div>
                   <div className="grid md:grid-cols-2 gap-4">
-                    <SliderRow label="Ваша цель, ₽" value={target} setValue={setTarget} min={0} max={Math.max(1_000_000, target, principal + contrib*12*Math.max(1,years))} step={5000} formatRight={n=>cf.format(n)}/>
-                    <SliderRow label="Стартовый капитал, ₽" value={principal} setValue={setPrincipal} min={0} max={Math.max(500_000, principal, target)} step={5000} formatRight={n=>cf.format(n)}/>
-                    <SliderRow label="Срок инвестирования, лет" value={years} setValue={setYears} min={0} max={50} step={0.1} formatRight={n=>`${n.toFixed(1)} лет`}/>
-                    <SliderRow label="Ставка, % годовых" value={manualAprPercent} setValue={setManualAprPercent} min={0} max={50} step={0.1} formatRight={n=>`${n.toFixed(1)}% / год`} disabled={usePortfolioReturn}/>
-                    <SliderRow label="Размер пополнений, ₽" value={contrib} setValue={setContrib} min={0} max={Math.max(50_000, contrib, Math.round(target/Math.max(12,years*12)))} step={500} formatRight={n=>cf.format(n)} disabled={mode==='contrib'}/>
+                    <SliderRow label="Ваша цель, ₽" value={target} setValue={setTarget}
+                      min={0} max={goalMax} step={5000} formatRight={n=>cf.format(n)}/>
+                    <SliderRow label="Стартовый капитал, ₽" value={principal} setValue={setPrincipal}
+                      min={0} max={Math.max(500_000, principal, target)} step={5000} formatRight={n=>cf.format(n)}/>
+                    <SliderRow label="Срок инвестирования, лет" value={years} setValue={setYears}
+                      min={0} max={50} step={0.1} formatRight={n=>`${n.toFixed(1)} лет`}/>
+                    <SliderRow label="Ставка, % годовых" value={manualAprPercent} setValue={setManualAprPercent}
+                      min={0} max={50} step={0.1} formatRight={n=>`${n.toFixed(1)}% / год`} disabled={usePortfolioReturn}/>
+                    <SliderRow label="Размер пополнений, ₽" value={contrib} setValue={setContrib}
+                      min={0} max={Math.max(50_000, contrib, Math.round(target/Math.max(12,years*12)))} step={500} formatRight={n=>cf.format(n)} disabled={mode==='contrib'}/>
                   </div>
                 </div>
 
                 <div className="grid lg:grid-cols-3 gap-4 mt-4">
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">
-                    <div className="text-base font-semibold mb-2">Аллокация</div>
+                    <div className="text-base font-semibold mb-2 text-zinc-100">Аллокация</div>
                     <SliderRow label="Доля облигаций, %" value={Math.round(bondShare*100)} setValue={v=>setBondShare(Math.min(100,Math.max(0,v))/100)} min={0} max={100} step={1} formatRight={n=>`${n.toFixed(0)}% облигации / ${(100-n).toFixed(0)}% акции`}/>
                     <div className="mt-2"></div>
                     <SliderRow label="Корреляция облигации–акции, ρ" value={rho} setValue={setRho} min={-0.9} max={0.9} step={0.01} formatRight={n=>`${(n*100).toFixed(0)}%`}/>
